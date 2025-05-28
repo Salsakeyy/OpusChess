@@ -76,7 +76,7 @@ void MoveGenerator::generateCaptures(const Board& board, std::vector<Move>& move
                 // En passant
                 Square ep = board.enPassantSquare();
                 if (ep != -1 && abs(fileOf(sq) - fileOf(ep)) == 1 && 
-                    rankOf(ep) == rankOf(sq) + direction) {
+                    rankOf(ep) == rankOf(sq) + (us == WHITE ? 1 : -1)) {
                     moves.push_back(MoveUtils::makeMove(sq, ep, MOVE_EN_PASSANT));
                 }
                 break;
@@ -225,7 +225,7 @@ void MoveGenerator::generatePawnMoves(const Board& board, Square from, std::vect
     // En passant
     Square ep = board.enPassantSquare();
     if (ep != -1) {
-        if (abs(fileOf(from) - fileOf(ep)) == 1 && rankOf(ep) == rankOf(from) + direction) {
+        if (abs(fileOf(from) - fileOf(ep)) == 1 && rankOf(ep) == rankOf(from) + (us == WHITE ? 1 : -1)) {
             addMove(board, from, ep, moves, MOVE_EN_PASSANT);
         }
     }
