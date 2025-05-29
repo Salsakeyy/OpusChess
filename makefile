@@ -135,7 +135,6 @@ test-regression: $(TARGET)
 	@git stash
 	@$(MAKE) clean
 	@$(MAKE) TARGET=$(BASE_ENGINE)_prev
-	@cp $(TARGET) $(BASE_ENGINE)_prev
 	@git stash pop
 	@$(MAKE) clean
 	@$(MAKE) TARGET=$(TEST_ENGINE)

@@ -1,0 +1,16 @@
+{
+  "base_engine": "/Users/lorenzobodmer/Desktop/opuschess/opuschess/chess_engine",
+  "test_engine": "/Users/lorenzobodmer/Desktop/opuschess/opuschess/chess_engine_test",
+  "games": 6,
+  "wins": 2,
+  "draws": 3,
+  "losses": 1,
+  "elo": 58.45121427129523,
+  "elo_ci": [
+    -223.4987037597973,
+    340.40113230238774
+  ],
+  "los": 0.7181485691746134,
+  "time_seconds": 67.30433106422424,
+  "timestamp": "2025-05-29T15:42:13.798874"
+}
