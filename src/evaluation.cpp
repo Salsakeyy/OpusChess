@@ -86,7 +86,7 @@ Score Evaluator::evaluate(const Board& board) {
     // Combine all evaluation components
     score += evaluateMaterial(board);
     score += evaluatePieceSquareTables(board);
-    score += evaluateMobility(board);
+    //score += evaluateMobility(board);
     // Add other evaluation components as needed
     // score += evaluatePawnStructure(board);
     // score += evaluateKingSafety(board);
