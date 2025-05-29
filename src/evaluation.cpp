@@ -1,4 +1,5 @@
 #include "evaluation.h"
+#include "movegen.h"
 
 // Piece-square tables (from White's perspective)
 // These values encourage good piece placement
@@ -85,8 +86,8 @@ Score Evaluator::evaluate(const Board& board) {
     // Combine all evaluation components
     score += evaluateMaterial(board);
     score += evaluatePieceSquareTables(board);
+    //score += evaluateMobility(board);
     // Add other evaluation components as needed
-    // score += evaluateMobility(board);
     // score += evaluatePawnStructure(board);
     // score += evaluateKingSafety(board);
     
@@ -141,9 +142,33 @@ Score Evaluator::evaluatePieceSquareTables(const Board& board) {
 }
 
 Score Evaluator::evaluateMobility(const Board& board) {
-    // TODO: Implement mobility evaluation
-    // Count the number of legal moves for each side
-    return 0;
+    Score score = 0;
+    
+    for (Square sq = 0; sq < 64; ++sq) {
+        Piece p = board.pieceAt(sq);
+        if (p == NO_PIECE) continue;
+        
+        // Generate moves for the current position
+        std::vector<Move> moves;
+        MoveGenerator::generateLegalMoves(board, moves);
+        
+        // Count moves from this square
+        int moveCount = 0;
+        for (const Move& move : moves) {
+            if (MoveUtils::from(move) == sq) {
+                moveCount++;
+            }
+        }
+        
+        Score value = moveCount;
+        if (colorOf(p) == WHITE) {
+            score += value;
+        } else {
+            score -= value;
+        }
+    }
+    
+    return score;
 }
 
 Score Evaluator::evaluatePawnStructure(const Board& board) {
