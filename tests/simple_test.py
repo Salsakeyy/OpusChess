@@ -36,9 +36,13 @@ class UCIEngine:
         
     def send(self, command):
         """Send command to engine"""
-        if self.process:
-            self.process.stdin.write(command + '\n')
-            self.process.stdin.flush()
+        if self.process and self.process.poll() is None:
+            try:
+                self.process.stdin.write(command + '\n')
+                self.process.stdin.flush()
+            except (BrokenPipeError, OSError):
+                # Process has terminated
+                pass
             
     def receive_until(self, expected):
         """Receive output until expected string"""
@@ -53,9 +57,17 @@ class UCIEngine:
     def quit(self):
         """Quit the engine"""
         if self.process:
-            self.send('quit')
-            self.process.wait(timeout=5)
-            self.process = None
+            try:
+                if self.process.poll() is None:  # Process still running
+                    self.send('quit')
+                    self.process.wait(timeout=5)
+            except (BrokenPipeError, OSError):
+                # Process already terminated
+                pass
+            finally:
+                if self.process.poll() is None:
+                    self.process.terminate()
+                self.process = None
 
 class GameManager:
     """Manages games between two engines"""
