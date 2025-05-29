@@ -58,4 +58,105 @@ profile: CXXFLAGS += -pg
 profile: LDFLAGS += -pg
 profile: clean all
 
-.PHONY: all clean debug profile test
+
+# Add these targets to your existing Makefile
+
+# Testing variables
+TEST_DIR = tests
+TEST_SCRIPT = $(TEST_DIR)/engine_test.py
+SIMPLE_TEST = $(TEST_DIR)/simple_test.py
+BASE_ENGINE = $(TARGET)
+TEST_ENGINE = $(TARGET)_test
+
+# Number of test games
+TEST_GAMES ?= 100
+TEST_CONCURRENCY ?= 1
+TEST_TIME ?= 10000
+TEST_INC ?= 100
+
+# Build test version
+test-build: 
+	$(MAKE) clean
+	$(MAKE) CXXFLAGS="$(CXXFLAGS) -DTEST_VERSION" TARGET=$(TEST_ENGINE)
+
+# Run simple test (no external dependencies)
+test-simple: $(TARGET) test-build
+	@echo "Running simple engine test..."
+	@python3 $(SIMPLE_TEST) $(BASE_ENGINE) $(TEST_ENGINE) \
+		--games $(TEST_GAMES) \
+		--concurrency $(TEST_CONCURRENCY) \
+		--time $(TEST_TIME) \
+		--inc $(TEST_INC)
+
+# Run full test (requires cutechess-cli)
+test-full: $(TARGET) test-build
+	@echo "Running full engine test with SPRT..."
+	@python3 $(TEST_SCRIPT) $(BASE_ENGINE) $(TEST_ENGINE) \
+		--games $(TEST_GAMES) \
+		--concurrency $(TEST_CONCURRENCY) \
+		--tc "10+0.1" \
+		--sprt-elo0 -1.75 \
+		--sprt-elo1 0.25
+
+# Quick test for development
+test-quick: $(TARGET) test-build
+	@echo "Running quick test (20 games)..."
+	@python3 $(SIMPLE_TEST) $(BASE_ENGINE) $(TEST_ENGINE) \
+		--games 20 \
+		--concurrency 1 \
+		--time 1000 \
+		--inc 10
+
+# Run perft test
+test-perft: $(TARGET)
+	@echo "Running perft tests..."
+	@./$(TARGET)_perft
+
+# Clean test files
+clean-test:
+	rm -f $(TEST_ENGINE)
+	rm -f test_*.json
+	rm -f $(TARGET)_perft
+
+# Setup test directory
+setup-test:
+	@mkdir -p $(TEST_DIR)
+	@echo "Creating test scripts..."
+	@# Copy the Python test scripts to the test directory
+	@echo "Test directory setup complete."
+
+# Test against previous version (assumes git)
+test-regression: $(TARGET)
+	@echo "Building previous version..."
+	@git stash
+	@$(MAKE) clean
+	@$(MAKE) TARGET=$(BASE_ENGINE)_prev
+	@cp $(TARGET) $(BASE_ENGINE)_prev
+	@git stash pop
+	@$(MAKE) clean
+	@$(MAKE) TARGET=$(TEST_ENGINE)
+	@echo "Testing current vs previous version..."
+	@python3 $(SIMPLE_TEST) $(BASE_ENGINE)_prev $(TEST_ENGINE) \
+		--games $(TEST_GAMES) \
+		--concurrency $(TEST_CONCURRENCY)
+	@rm -f $(BASE_ENGINE)_prev
+
+# Help for testing
+help-test:
+	@echo "Testing targets:"
+	@echo "  make test-simple    - Run simple test (no external dependencies)"
+	@echo "  make test-full      - Run full SPRT test (requires cutechess-cli)"
+	@echo "  make test-quick     - Quick 20-game test for development"
+	@echo "  make test-perft     - Run move generation tests"
+	@echo "  make test-regression - Test against previous git version"
+	@echo ""
+	@echo "Variables:"
+	@echo "  TEST_GAMES=N       - Number of games (default: 100)"
+	@echo "  TEST_CONCURRENCY=N - Concurrent games (default: 1)"
+	@echo "  TEST_TIME=MS       - Time per move in ms (default: 10000)"
+	@echo ""
+	@echo "Example:"
+	@echo "  make test-simple TEST_GAMES=1000 TEST_CONCURRENCY=4"
+
+.PHONY: test-build test-simple test-full test-quick test-perft clean-test setup-test test-regression help-test
+

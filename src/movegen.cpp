@@ -125,8 +125,16 @@ void MoveGenerator::generateCaptures(const Board& board, std::vector<Move>& move
                     while (true) {
                         to += delta;
                         if (to < 0 || to >= 64) break;
-                        int fileDiff = abs(fileOf(to) - fileOf(to - delta));
-                        if (fileDiff > 1) break;
+                        
+                        // Check for board edge wrapping
+                        if (abs(delta) == 1) {
+                            // Horizontal movement - check rank didn't change
+                            if (rankOf(to) != rankOf(to - delta)) break;
+                        } else if (abs(delta) == 7 || abs(delta) == 9) {
+                            // Diagonal movement - check file diff is exactly 1
+                            if (abs(fileOf(to) - fileOf(to - delta)) != 1) break;
+                        }
+                        // Vertical movement (delta = ±8) doesn't need extra checks
                         
                         Piece target = board.pieceAt(to);
                         if (target != NO_PIECE) {
@@ -265,6 +273,7 @@ void MoveGenerator::generateQueenMoves(const Board& board, Square from, std::vec
 
 void MoveGenerator::generateKingMoves(const Board& board, Square from, std::vector<Move>& moves) {
     Color us = board.sideToMove();
+    Color them = 1 - us;
     
     // Normal moves
     for (int delta : KING_DELTAS) {
@@ -284,38 +293,44 @@ void MoveGenerator::generateKingMoves(const Board& board, Square from, std::vect
         }
     }
     
-    // Castling
+    // Castling - FIXED: Now checks both intermediate and destination squares
     if (!board.isInCheck(us)) {
         if (us == WHITE) {
-            // White kingside
+            // White kingside castling
             if ((board.castlingRights() & WHITE_KINGSIDE) &&
                 board.pieceAt(F1) == NO_PIECE &&
                 board.pieceAt(G1) == NO_PIECE &&
-                !board.isAttacked(F1, BLACK)) {
+                !board.isAttacked(F1, them) &&
+                !board.isAttacked(G1, them)) {  // FIXED: Check destination square
                 addMove(board, from, G1, moves, MOVE_CASTLE);
             }
-            // White queenside
+            
+            // White queenside castling
             if ((board.castlingRights() & WHITE_QUEENSIDE) &&
                 board.pieceAt(D1) == NO_PIECE &&
                 board.pieceAt(C1) == NO_PIECE &&
                 board.pieceAt(B1) == NO_PIECE &&
-                !board.isAttacked(D1, BLACK)) {
+                !board.isAttacked(D1, them) &&
+                !board.isAttacked(C1, them)) {  // FIXED: Check destination square
                 addMove(board, from, C1, moves, MOVE_CASTLE);
             }
         } else {
-            // Black kingside
+            // Black kingside castling
             if ((board.castlingRights() & BLACK_KINGSIDE) &&
                 board.pieceAt(F8) == NO_PIECE &&
                 board.pieceAt(G8) == NO_PIECE &&
-                !board.isAttacked(F8, WHITE)) {
+                !board.isAttacked(F8, them) &&
+                !board.isAttacked(G8, them)) {  // FIXED: Check destination square
                 addMove(board, from, G8, moves, MOVE_CASTLE);
             }
-            // Black queenside
+            
+            // Black queenside castling
             if ((board.castlingRights() & BLACK_QUEENSIDE) &&
                 board.pieceAt(D8) == NO_PIECE &&
                 board.pieceAt(C8) == NO_PIECE &&
                 board.pieceAt(B8) == NO_PIECE &&
-                !board.isAttacked(D8, WHITE)) {
+                !board.isAttacked(D8, them) &&
+                !board.isAttacked(C8, them)) {  // FIXED: Check destination square
                 addMove(board, from, C8, moves, MOVE_CASTLE);
             }
         }
@@ -335,9 +350,15 @@ void MoveGenerator::generateSlidingMoves(const Board& board, Square from,
             to += delta;
             if (to < 0 || to >= 64) break;
             
-            // Check for wrapping
-            int fileDiff = abs(fileOf(to) - fileOf(to - delta));
-            if (fileDiff > 1) break;
+            // IMPROVED: More specific wrapping detection
+            if (abs(delta) == 1) {
+                // Horizontal movement - check rank didn't change
+                if (rankOf(to) != rankOf(to - delta)) break;
+            } else if (abs(delta) == 7 || abs(delta) == 9) {
+                // Diagonal movement - check file diff is exactly 1
+                if (abs(fileOf(to) - fileOf(to - delta)) != 1) break;
+            }
+            // Vertical movement (delta = ±8) doesn't need extra checks
             
             Piece target = board.pieceAt(to);
             if (target == NO_PIECE) {
