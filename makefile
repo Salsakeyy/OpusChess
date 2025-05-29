@@ -19,6 +19,7 @@ OBJECTS = $(SOURCES:.cpp=.o)
 # Executable names
 EXECUTABLE = chess_engine
 TEST_EXECUTABLE = perft_test
+TARGET ?= chess_engine
 
 # Test program sources
 TEST_SOURCES = src/perft_test.cpp \
@@ -29,9 +30,13 @@ TEST_SOURCES = src/perft_test.cpp \
 TEST_OBJECTS = $(TEST_SOURCES:.cpp=.o)
 
 # Default target
-all: $(EXECUTABLE)
+all: $(TARGET)
 
 # Build the executable
+$(TARGET): $(OBJECTS)
+	$(CXX) $(OBJECTS) -o $@ $(LDFLAGS)
+
+# Legacy target for backwards compatibility
 $(EXECUTABLE): $(OBJECTS)
 	$(CXX) $(OBJECTS) -o $@ $(LDFLAGS)
 
@@ -76,7 +81,6 @@ TEST_INC ?= 100
 
 # Build test version
 test-build: 
-	$(MAKE) clean
 	$(MAKE) CXXFLAGS="$(CXXFLAGS) -DTEST_VERSION" TARGET=$(TEST_ENGINE)
 
 # Run simple test (no external dependencies)
@@ -159,4 +163,3 @@ help-test:
 	@echo "  make test-simple TEST_GAMES=1000 TEST_CONCURRENCY=4"
 
 .PHONY: test-build test-simple test-full test-quick test-perft clean-test setup-test test-regression help-test
-
