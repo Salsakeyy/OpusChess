@@ -48,9 +48,13 @@ class UCIEngine:
         """Receive output until expected string"""
         lines = []
         while self.process and self.process.poll() is None:
-            line = self.process.stdout.readline().strip()
-            lines.append(line)
-            if expected in line:
+            try:
+                line = self.process.stdout.readline().strip()
+                if line:
+                    lines.append(line)
+                if expected in line:
+                    break
+            except:
                 break
         return lines
         
@@ -61,12 +65,12 @@ class UCIEngine:
                 if self.process.poll() is None:  # Process still running
                     self.send('quit')
                     self.process.wait(timeout=5)
-            except (BrokenPipeError, OSError):
-                # Process already terminated
+            except:
                 pass
             finally:
                 if self.process.poll() is None:
                     self.process.terminate()
+                    self.process.wait(timeout=1)
                 self.process = None
 
 class GameManager:
@@ -89,8 +93,34 @@ class GameManager:
     def __init__(self, engine1_path, engine2_path, time_ms=10000, inc_ms=100):
         self.engine1_path = engine1_path
         self.engine2_path = engine2_path
-        self.time_ms = time_ms
+        self.initial_time_ms = time_ms
         self.inc_ms = inc_ms
+        
+    def parse_move(self, response_lines):
+        """Extract move from engine response"""
+        for line in response_lines:
+            if line.startswith('bestmove'):
+                parts = line.split()
+                if len(parts) > 1:
+                    return parts[1]
+        return None
+        
+    def check_game_end(self, moves):
+        """Simple game end detection based on move patterns"""
+        if len(moves) < 10:
+            return False, None
+            
+        # Check for repetition (simplified - just check if last 8 moves repeat)
+        if len(moves) >= 8:
+            if moves[-4:] == moves[-8:-4]:
+                return True, "draw"
+                
+        # Check for very long games
+        if len(moves) > 200:
+            return True, "draw"
+            
+        # No automatic end detection - games will be adjudicated
+        return False, None
         
     def play_game(self, engine1_white=True):
         """Play a single game between engines"""
@@ -127,70 +157,78 @@ class GameManager:
             black_engine = engine2 if engine1_white else engine1
             current_engine = white_engine
             
+            # Time tracking
+            white_time = self.initial_time_ms
+            black_time = self.initial_time_ms
+            
             # Play game
             max_moves = 200
-            move_count = 0
             
-            while move_count < max_moves:
+            while len(moves) < max_moves:
                 # Send position
                 pos_cmd = "position startpos"
                 if moves:
                     pos_cmd += " moves " + " ".join(moves)
                 current_engine.send(pos_cmd)
                 
-                # Get move
-                current_engine.send(f'go movetime {self.time_ms}')
+                # Prepare go command with time management
+                if current_engine == white_engine:
+                    go_cmd = f'go wtime {white_time} btime {black_time} winc {self.inc_ms} binc {self.inc_ms}'
+                else:
+                    go_cmd = f'go wtime {white_time} btime {black_time} winc {self.inc_ms} binc {self.inc_ms}'
+                
+                # Send go command and track time
+                start_time = time.time()
+                current_engine.send(go_cmd)
                 response = current_engine.receive_until('bestmove')
+                elapsed_ms = int((time.time() - start_time) * 1000)
+                
+                # Update time
+                if current_engine == white_engine:
+                    white_time = max(100, white_time - elapsed_ms + self.inc_ms)
+                else:
+                    black_time = max(100, black_time - elapsed_ms + self.inc_ms)
                 
                 # Extract move
-                bestmove_line = next((line for line in response if line.startswith('bestmove')), None)
-                if not bestmove_line:
-                    # Engine crashed or failed
-                    return 0.5  # Draw
-                    
-                move = bestmove_line.split()[1]
-                if move == '(none)' or move == '0000':
-                    # No legal moves - game over
-                    break
+                move = self.parse_move(response)
+                if not move or move == '(none)' or move == '0000':
+                    # No legal moves or error
+                    if current_engine == white_engine:
+                        return 0.0 if engine1_white else 1.0  # White loses
+                    else:
+                        return 1.0 if engine1_white else 0.0  # Black loses
                     
                 moves.append(move)
-                move_count += 1
+                
+                # Check for game end
+                ended, result = self.check_game_end(moves)
+                if ended:
+                    if result == "draw":
+                        return 0.5
+                    # Other end conditions would be handled here
+                    
+                # Check for time forfeit
+                if (current_engine == white_engine and white_time < 100) or \
+                   (current_engine == black_engine and black_time < 100):
+                    # Time forfeit
+                    if current_engine == white_engine:
+                        return 0.0 if engine1_white else 1.0  # White loses on time
+                    else:
+                        return 1.0 if engine1_white else 0.0  # Black loses on time
                 
                 # Switch engines
                 current_engine = black_engine if current_engine == white_engine else white_engine
                 
-                # Simple game end detection (would need proper implementation)
-                # For now, we'll simulate with random results weighted by move count
-                if move_count > 40 and random.random() < 0.01 * (move_count - 40):
-                    break
-                    
-            # Determine result (simplified - you'd need proper game ending detection)
-            # This is just for demonstration
-            result = self._evaluate_position(moves, engine1_white)
+            # Game too long - adjudicate as draw
+            return 0.5
             
-            return result
+        except Exception as e:
+            print(f"Error in game: {e}")
+            return 0.5  # Draw on error
             
         finally:
             engine1.quit()
             engine2.quit()
-            
-    def _evaluate_position(self, moves, engine1_white):
-        """Evaluate final position (simplified)"""
-        # In a real implementation, you'd need to:
-        # 1. Check for checkmate
-        # 2. Check for stalemate
-        # 3. Check for insufficient material
-        # 4. Check for threefold repetition
-        # 5. Check for 50-move rule
-        
-        # For now, return random weighted result
-        rand = random.random()
-        if rand < 0.25:  # White wins
-            return 1.0 if engine1_white else 0.0
-        elif rand < 0.5:  # Black wins
-            return 0.0 if engine1_white else 1.0
-        else:  # Draw
-            return 0.5
 
 class SimpleTester:
     """Simplified testing framework"""
@@ -209,6 +247,7 @@ class SimpleTester:
         self.wins = 0
         self.draws = 0
         self.losses = 0
+        self.time_losses = 0
         self.lock = threading.Lock()
         
         # Progress
@@ -220,25 +259,32 @@ class SimpleTester:
         manager = GameManager(self.test_engine, self.base_engine, self.time_ms, self.inc_ms)
         
         for i in game_indices:
-            # Play pair of games with reversed colors
-            result1 = manager.play_game(engine1_white=True)
-            result2 = manager.play_game(engine1_white=False)
-            
-            with self.lock:
-                # Update results
-                for result in [result1, result2]:
-                    if result == 1.0:
-                        self.wins += 1
-                    elif result == 0.0:
-                        self.losses += 1
-                    else:
-                        self.draws += 1
-                        
-                self.games_completed += 2
+            try:
+                # Play pair of games with reversed colors
+                result1 = manager.play_game(engine1_white=True)
+                result2 = manager.play_game(engine1_white=False)
                 
-                # Print progress
-                if self.games_completed % 10 == 0:
-                    self.print_progress()
+                with self.lock:
+                    # Update results
+                    for result in [result1, result2]:
+                        if result == 1.0:
+                            self.wins += 1
+                        elif result == 0.0:
+                            self.losses += 1
+                        else:
+                            self.draws += 1
+                            
+                    self.games_completed += 2
+                    
+                    # Print progress
+                    if self.games_completed % 10 == 0:
+                        self.print_progress()
+                        
+            except Exception as e:
+                print(f"\nError in game pair {i}: {e}")
+                with self.lock:
+                    self.games_completed += 2
+                    self.draws += 2  # Count errors as draws
                     
     def print_progress(self):
         """Print current progress"""
@@ -271,20 +317,38 @@ class SimpleTester:
     def run(self):
         """Run the test"""
         print(f"Testing: {os.path.basename(self.test_engine)} vs {os.path.basename(self.base_engine)}")
-        print(f"Games: {self.num_games} | Time: {self.time_ms}+{self.inc_ms}ms")
+        print(f"Games: {self.num_games} | Time: {self.time_ms}ms + {self.inc_ms}ms/move")
         print("-" * 80)
         
+        # Validate engines
+        if not os.path.exists(self.base_engine):
+            print(f"Error: Base engine not found: {self.base_engine}")
+            return
+            
+        if not os.path.exists(self.test_engine):
+            print(f"Error: Test engine not found: {self.test_engine}")
+            return
+            
+        # Make engines executable
+        try:
+            os.chmod(self.base_engine, 0o755)
+            os.chmod(self.test_engine, 0o755)
+        except:
+            pass
+            
         self.start_time = time.time()
         
         # Distribute games among threads
         games_per_thread = self.num_games // (2 * self.concurrency)  # Divide by 2 for pairs
+        remaining = (self.num_games // 2) - (games_per_thread * self.concurrency)
+        
         threads = []
         
         for i in range(self.concurrency):
             start_idx = i * games_per_thread
             end_idx = start_idx + games_per_thread
             if i == self.concurrency - 1:
-                end_idx = self.num_games // 2
+                end_idx += remaining
                 
             indices = list(range(start_idx, end_idx))
             thread = threading.Thread(target=self.run_games, args=(indices,))
@@ -353,6 +417,7 @@ class SimpleTester:
             'elo_ci': [ci_lower, ci_upper],
             'los': los,
             'time_seconds': elapsed,
+            'time_control': f"{self.time_ms}+{self.inc_ms}",
             'timestamp': datetime.now().isoformat()
         }
         
@@ -364,11 +429,11 @@ class SimpleTester:
         
 def main():
     if len(sys.argv) < 3:
-        print("Usage: python simple_tester.py <base_engine> <test_engine> [options]")
+        print("Usage: python simple_test.py <base_engine> <test_engine> [options]")
         print("\nOptions:")
         print("  --games N      Number of games to play (default: 100)")
         print("  --concurrency N Number of concurrent games (default: 1)")
-        print("  --time MS      Time per move in milliseconds (default: 10000)")
+        print("  --time MS      Initial time per game in milliseconds (default: 10000)")
         print("  --inc MS       Increment per move in milliseconds (default: 100)")
         sys.exit(1)
         

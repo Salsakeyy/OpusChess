@@ -104,9 +104,16 @@ void UCI::handleGo(const std::string& line) {
     }
     
     std::vector<std::string> tokens = split(line);
-    int depth = 5; // Default depth
+    int depth = 64; // Default max depth
     int timeLimit = 0;
     bool infinite = false;
+    
+    // Time management variables
+    int myTime = 0;
+    int myInc = 0;
+    int opTime = 0;
+    int opInc = 0;
+    int movesToGo = 40; // Assume 40 moves to time control if not specified
     
     for (size_t i = 1; i < tokens.size(); i++) {
         if (tokens[i] == "depth" && i + 1 < tokens.size()) {
@@ -115,14 +122,88 @@ void UCI::handleGo(const std::string& line) {
             infinite = true;
         } else if (tokens[i] == "movetime" && i + 1 < tokens.size()) {
             timeLimit = std::stoi(tokens[i + 1]);
-        } else if (tokens[i] == "wtime" && i + 1 < tokens.size() && board.sideToMove() == WHITE) {
+        } else if (tokens[i] == "wtime" && i + 1 < tokens.size()) {
             int wtime = std::stoi(tokens[i + 1]);
-            timeLimit = wtime / 20; // Simple time management
-        } else if (tokens[i] == "btime" && i + 1 < tokens.size() && board.sideToMove() == BLACK) {
+            if (board.sideToMove() == WHITE) {
+                myTime = wtime;
+            } else {
+                opTime = wtime;
+            }
+        } else if (tokens[i] == "btime" && i + 1 < tokens.size()) {
             int btime = std::stoi(tokens[i + 1]);
-            timeLimit = btime / 20; // Simple time management
+            if (board.sideToMove() == BLACK) {
+                myTime = btime;
+            } else {
+                opTime = btime;
+            }
+        } else if (tokens[i] == "winc" && i + 1 < tokens.size()) {
+            int winc = std::stoi(tokens[i + 1]);
+            if (board.sideToMove() == WHITE) {
+                myInc = winc;
+            } else {
+                opInc = winc;
+            }
+        } else if (tokens[i] == "binc" && i + 1 < tokens.size()) {
+            int binc = std::stoi(tokens[i + 1]);
+            if (board.sideToMove() == BLACK) {
+                myInc = binc;
+            } else {
+                opInc = binc;
+            }
+        } else if (tokens[i] == "movestogo" && i + 1 < tokens.size()) {
+            movesToGo = std::stoi(tokens[i + 1]);
         }
     }
+    
+    // Calculate time limit if not explicitly set
+    if (timeLimit == 0 && !infinite && myTime > 0) {
+        // Basic time management formula
+        // Reserve some time for safety
+        int safetyTime = 50; // 50ms safety margin
+        int availableTime = myTime - safetyTime;
+        
+        if (availableTime > 0) {
+            // Base time calculation
+            if (movesToGo > 0) {
+                // We have a specific number of moves to make
+                timeLimit = availableTime / movesToGo;
+            } else {
+                // Assume we need to make ~30 more moves
+                timeLimit = availableTime / 30;
+            }
+            
+            // Add increment consideration
+            // Use most of the increment but keep some safety margin
+            if (myInc > 0) {
+                timeLimit += myInc * 9 / 10; // Use 90% of increment
+            }
+            
+            // Adjust based on game phase (simple heuristic)
+            int moveNum = board.fullmoveNumber();
+            if (moveNum < 10) {
+                // Opening: use a bit more time
+                timeLimit = timeLimit * 12 / 10;
+            } else if (moveNum > 40) {
+                // Endgame: use less time per move
+                timeLimit = timeLimit * 8 / 10;
+            }
+            
+            // Never use more than 1/4 of remaining time on a single move
+            int maxTime = availableTime / 4;
+            if (timeLimit > maxTime) {
+                timeLimit = maxTime;
+            }
+            
+            // Minimum time per move
+            if (timeLimit < 10) {
+                timeLimit = 10;
+            }
+        }
+    }
+    
+    // Debug output
+    std::cerr << "Time management: myTime=" << myTime << " myInc=" << myInc 
+              << " movesToGo=" << movesToGo << " -> timeLimit=" << timeLimit << "ms" << std::endl;
     
     // Start search in a separate thread
     searchThread = std::thread([this, depth, timeLimit, infinite]() {
@@ -133,7 +214,6 @@ void UCI::handleGo(const std::string& line) {
         printBestMove(bestMove);
     });
 }
-
 void UCI::handleStop() {
     if (search) {
         search->stopSearch();
