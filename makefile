@@ -52,8 +52,9 @@ $(TEST_EXECUTABLE): $(TEST_OBJECTS)
 
 # Clean build files
 clean:
-	rm -f $(OBJECTS) $(TEST_OBJECTS) $(EXECUTABLE) $(TEST_EXECUTABLE)
-
+	rm -f $(OBJECTS) $(TEST_OBJECTS) $(EXECUTABLE) $(TEST_EXECUTABLE) $(TEST_ENGINE)
+	rm -f $(BASE_ENGINE)_prev $(TARGET)_prev
+	rm -f chess_engine_prev chess_engine_test
 # Debug build
 debug: CXXFLAGS = -std=c++17 -Wall -Wextra -g -O0 -DDEBUG
 debug: clean all
@@ -76,8 +77,8 @@ TEST_ENGINE = $(TARGET)_test
 # Number of test games
 TEST_GAMES ?= 100
 TEST_CONCURRENCY ?= 1
-TEST_TIME ?= 10000
-TEST_INC ?= 100
+TEST_TIME ?= 100
+TEST_INC ?= 10
 
 # Build test version
 test-build: 
@@ -135,15 +136,16 @@ test-regression: $(TARGET)
 	@git stash
 	@$(MAKE) clean
 	@$(MAKE) TARGET=$(BASE_ENGINE)_prev
+	@cp $(BASE_ENGINE)_prev $(BASE_ENGINE)_prev.backup
 	@git stash pop
 	@$(MAKE) clean
 	@$(MAKE) TARGET=$(TEST_ENGINE)
+	@mv $(BASE_ENGINE)_prev.backup $(BASE_ENGINE)_prev
 	@echo "Testing current vs previous version..."
 	@python3 $(SIMPLE_TEST) $(BASE_ENGINE)_prev $(TEST_ENGINE) \
 		--games $(TEST_GAMES) \
 		--concurrency $(TEST_CONCURRENCY)
 	@rm -f $(BASE_ENGINE)_prev
-
 # Help for testing
 help-test:
 	@echo "Testing targets:"
@@ -156,7 +158,7 @@ help-test:
 	@echo "Variables:"
 	@echo "  TEST_GAMES=N       - Number of games (default: 100)"
 	@echo "  TEST_CONCURRENCY=N - Concurrent games (default: 1)"
-	@echo "  TEST_TIME=MS       - Time per move in ms (default: 10000)"
+	@echo "  TEST_TIME=MS       - Time per move in ms (default: 1000)"
 	@echo ""
 	@echo "Example:"
 	@echo "  make test-simple TEST_GAMES=1000 TEST_CONCURRENCY=4"
