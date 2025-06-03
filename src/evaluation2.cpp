@@ -87,13 +87,13 @@ Score Evaluator::evaluate(const Board& board) {
     score += evaluateMaterial(board);
     score += evaluatePieceSquareTables(board);
     score += evaluateMobility(board);
-    score += evaluatePawnStructure(board);
+    
 #ifndef NO_EVAL
     // Additional evaluation components
     
 
     // Add other evaluation components as needed
-    
+    // score += evaluatePawnStructure(board);
     // score += evaluateKingSafety(board);
 #endif
     
@@ -183,26 +183,16 @@ Score Evaluator::evaluatePawnStructure(const Board& board) {
     Score score = 0;
     // TODO: Implement pawn structure evaluation
     // - Doubled pawns
-    Score value = 0;
-
     for(Square sq = 0; sq < 64; ++sq){
         Piece p = board.pieceAt(sq);
-        if(p != PAWN) continue;
+        while(p != PAWN) continue;
+        //if board
 
-        Color color = colorOf(p);
-        Square checkSq = color == WHITE ? sq + 8 : sq -8;
-
-        if((color == WHITE ? sq < 56 : sq >= 8)&& board.pieceAt(checkSq) == p){
-            value += color == WHITE ? -30 : 30;
-        }
-        
-        score += value;
     }
-
     // - Isolated pawns
     // - Passed pawns
     // - Pawn chains
-    return score;
+    return 0;
 }
 
 Score Evaluator::evaluateKingSafety(const Board& board) {
