@@ -4,12 +4,15 @@ CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -O3 -march=native -flto
 LDFLAGS = -pthread -flto
 
+# Configurable evaluation source
+EVAL_SOURCE ?= src/evaluation.cpp
+
 # Source files
 SOURCES = src/main.cpp \
           src/board.cpp \
           src/move.cpp \
           src/movegen.cpp \
-          src/evaluation.cpp \
+          $(EVAL_SOURCE) \
           src/search.cpp \
           src/uci.cpp
 
@@ -55,6 +58,8 @@ clean:
 	rm -f $(OBJECTS) $(TEST_OBJECTS) $(EXECUTABLE) $(TEST_EXECUTABLE) $(TEST_ENGINE)
 	rm -f $(BASE_ENGINE)_prev $(TARGET)_prev
 	rm -f chess_engine_prev chess_engine_test chess_engine_noeval
+	rm -f chess_engine_eval1 chess_engine_eval2
+
 # Debug build
 debug: CXXFLAGS = -std=c++17 -Wall -Wextra -g -O0 -DDEBUG
 debug: clean all
@@ -75,7 +80,7 @@ BASE_ENGINE = $(TARGET)
 TEST_ENGINE = $(TARGET)_test
 
 # Number of test games
-TEST_GAMES ?= 100
+TEST_GAMES ?= 1000
 TEST_CONCURRENCY ?= 1
 TEST_TIME ?= 100
 TEST_INC ?= 10
@@ -94,8 +99,35 @@ build-eval:
 	$(MAKE) clean
 	$(MAKE) TARGET=chess_engine_test
 
-# Test evaluation vs no evaluation
+# Build engine with evaluation.cpp
+build-eval1:
+	$(MAKE) clean
+	$(MAKE) EVAL_SOURCE=src/evaluation.cpp TARGET=chess_engine_eval1
+
+# Build engine with evaluation2.cpp
+build-eval2:
+	$(MAKE) clean
+	$(MAKE) EVAL_SOURCE=src/evaluation2.cpp TARGET=chess_engine_eval2
+
+# Test evaluation.cpp vs evaluation2.cpp
 test-eval: 
+	@echo "Building engine with evaluation.cpp..."
+	$(MAKE) clean
+	$(MAKE) EVAL_SOURCE=src/evaluation.cpp TARGET=chess_engine_eval1
+	@cp chess_engine_eval1 chess_engine_eval1.tmp
+	@echo "Building engine with evaluation2.cpp..."
+	$(MAKE) clean
+	$(MAKE) EVAL_SOURCE=src/evaluation2.cpp TARGET=chess_engine_eval2
+	@mv chess_engine_eval1.tmp chess_engine_eval1
+	@echo "Testing evaluation.cpp vs evaluation2.cpp..."
+	@python3 $(SIMPLE_TEST) chess_engine_eval1 chess_engine_eval2 \
+		--games $(TEST_GAMES) \
+		--concurrency $(TEST_CONCURRENCY) \
+		--time $(TEST_TIME) \
+		--inc $(TEST_INC)
+
+# Test evaluation vs no evaluation (renamed from original test-eval)
+test-eval-vs-noeval: 
 	@echo "Building no-eval engine..."
 	$(MAKE) clean
 	$(MAKE) CXXFLAGS="$(CXXFLAGS) -DNO_EVAL" TARGET=chess_engine_noeval
@@ -173,22 +205,32 @@ test-regression: $(TARGET)
 		--games $(TEST_GAMES) \
 		--concurrency $(TEST_CONCURRENCY)
 	@rm -f $(BASE_ENGINE)_prev
+
 # Help for testing
 help-test:
 	@echo "Testing targets:"
-	@echo "  make test-simple    - Run simple test (no external dependencies)"
-	@echo "  make test-full      - Run full SPRT test (requires cutechess-cli)"
-	@echo "  make test-quick     - Quick 20-game test for development"
-	@echo "  make test-perft     - Run move generation tests"
-	@echo "  make test-regression - Test against previous git version"
-	@echo "  make test-eval      - Test evaluation vs material-only engine"
+	@echo "  make test-simple         - Run simple test (no external dependencies)"
+	@echo "  make test-full           - Run full SPRT test (requires cutechess-cli)"
+	@echo "  make test-quick          - Quick 20-game test for development"
+	@echo "  make test-perft          - Run move generation tests"
+	@echo "  make test-regression     - Test against previous git version"
+	@echo "  make test-eval           - Test evaluation.cpp vs evaluation2.cpp"
+	@echo "  make test-eval-vs-noeval - Test evaluation vs material-only engine"
+	@echo ""
+	@echo "Build targets:"
+	@echo "  make build-eval1         - Build engine with evaluation.cpp"
+	@echo "  make build-eval2         - Build engine with evaluation2.cpp"
+	@echo "  make build-noeval        - Build engine without evaluation"
 	@echo ""
 	@echo "Variables:"
 	@echo "  TEST_GAMES=N       - Number of games (default: 100)"
 	@echo "  TEST_CONCURRENCY=N - Concurrent games (default: 1)"
 	@echo "  TEST_TIME=MS       - Time per move in ms (default: 1000)"
+	@echo "  EVAL_SOURCE=file   - Evaluation source file (default: src/evaluation.cpp)"
 	@echo ""
 	@echo "Example:"
 	@echo "  make test-simple TEST_GAMES=1000 TEST_CONCURRENCY=4"
+	@echo "  make build-eval1"
+	@echo "  make test-eval TEST_GAMES=500"
 
-.PHONY: test-build test-simple test-full test-quick test-perft clean-test setup-test test-regression help-test build-noeval build-eval test-eval
+.PHONY: test-build test-simple test-full test-quick test-perft clean-test setup-test test-regression help-test build-noeval build-eval test-eval build-eval1 build-eval2 test-eval-vs-noeval
