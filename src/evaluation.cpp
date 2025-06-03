@@ -83,13 +83,17 @@ const Score Evaluator::KING_ENDGAME_PST[64] = {
 Score Evaluator::evaluate(const Board& board) {
     Score score = 0;
     
-    // Combine all evaluation components
+    // Always include material evaluation
     score += evaluateMaterial(board);
+    
+#ifndef NO_EVAL
+    // Additional evaluation components
     score += evaluatePieceSquareTables(board);
-    score += evaluateMobility(board);
+    //score += evaluateMobility(board);
     // Add other evaluation components as needed
     // score += evaluatePawnStructure(board);
     // score += evaluateKingSafety(board);
+#endif
     
     // Return score from the perspective of the side to move
     return board.sideToMove() == WHITE ? score : -score;
@@ -144,29 +148,29 @@ Score Evaluator::evaluatePieceSquareTables(const Board& board) {
 Score Evaluator::evaluateMobility(const Board& board) {
     Score score = 0;
     
-    for (Square sq = 0; sq < 64; ++sq) {
-        Piece p = board.pieceAt(sq);
-        if (p == NO_PIECE) continue;
+    // Generate moves once for the entire position
+    std::vector<Move> moves;
+    MoveGenerator::generateLegalMoves(board, moves);
+    
+    // Count moves for each piece
+    int whiteMoves = 0;
+    int blackMoves = 0;
+    
+    for (const Move& move : moves) {
+        Square from = MoveUtils::from(move);
+        Piece p = board.pieceAt(from);
         
-        // Generate moves for the current position
-        std::vector<Move> moves;
-        MoveGenerator::generateLegalMoves(board, moves);
-        
-        // Count moves from this square
-        int moveCount = 0;
-        for (const Move& move : moves) {
-            if (MoveUtils::from(move) == sq) {
-                moveCount++;
+        if (p != NO_PIECE) {
+            if (colorOf(p) == WHITE) {
+                whiteMoves++;
+            } else {
+                blackMoves++;
             }
         }
-        
-        Score value = moveCount;
-        if (colorOf(p) == WHITE) {
-            score += value;
-        } else {
-            score -= value;
-        }
     }
+    
+    // Simple mobility score: each move is worth 1 centipawn
+    score = whiteMoves - blackMoves;
     
     return score;
 }

@@ -54,7 +54,7 @@ $(TEST_EXECUTABLE): $(TEST_OBJECTS)
 clean:
 	rm -f $(OBJECTS) $(TEST_OBJECTS) $(EXECUTABLE) $(TEST_EXECUTABLE) $(TEST_ENGINE)
 	rm -f $(BASE_ENGINE)_prev $(TARGET)_prev
-	rm -f chess_engine_prev chess_engine_test
+	rm -f chess_engine_prev chess_engine_test chess_engine_noeval
 # Debug build
 debug: CXXFLAGS = -std=c++17 -Wall -Wextra -g -O0 -DDEBUG
 debug: clean all
@@ -84,6 +84,33 @@ TEST_INC ?= 10
 test-build: 
 	$(MAKE) CXXFLAGS="$(CXXFLAGS) -DTEST_VERSION" TARGET=$(TEST_ENGINE)
 
+# Build version without evaluation (material only)
+build-noeval:
+	$(MAKE) clean
+	$(MAKE) CXXFLAGS="$(CXXFLAGS) -DNO_EVAL" TARGET=chess_engine_noeval
+
+# Build normal version with evaluation
+build-eval:
+	$(MAKE) clean
+	$(MAKE) TARGET=chess_engine_test
+
+# Test evaluation vs no evaluation
+test-eval: 
+	@echo "Building no-eval engine..."
+	$(MAKE) clean
+	$(MAKE) CXXFLAGS="$(CXXFLAGS) -DNO_EVAL" TARGET=chess_engine_noeval
+	@cp chess_engine_noeval chess_engine_noeval.tmp
+	@echo "Building evaluation engine..."
+	$(MAKE) clean
+	$(MAKE) TARGET=chess_engine_test
+	@mv chess_engine_noeval.tmp chess_engine_noeval
+	@echo "Testing evaluation effectiveness..."
+	@python3 $(SIMPLE_TEST) chess_engine_noeval chess_engine_test \
+		--games $(TEST_GAMES) \
+		--concurrency $(TEST_CONCURRENCY) \
+		--time $(TEST_TIME) \
+		--inc $(TEST_INC)
+
 # Run simple test (no external dependencies)
 test-simple: $(TARGET) test-build
 	@echo "Running simple engine test..."
@@ -107,10 +134,10 @@ test-full: $(TARGET) test-build
 test-quick: $(TARGET) test-build
 	@echo "Running quick test (20 games)..."
 	@python3 $(SIMPLE_TEST) $(BASE_ENGINE) $(TEST_ENGINE) \
-		--games 20 \
-		--concurrency 1 \
-		--time 1000 \
-		--inc 10
+		--games 1000 \
+		--concurrency 4 \
+		--time 10000 \
+		--inc 100
 
 # Run perft test
 test-perft: $(TARGET)
@@ -154,6 +181,7 @@ help-test:
 	@echo "  make test-quick     - Quick 20-game test for development"
 	@echo "  make test-perft     - Run move generation tests"
 	@echo "  make test-regression - Test against previous git version"
+	@echo "  make test-eval      - Test evaluation vs material-only engine"
 	@echo ""
 	@echo "Variables:"
 	@echo "  TEST_GAMES=N       - Number of games (default: 100)"
@@ -163,4 +191,4 @@ help-test:
 	@echo "Example:"
 	@echo "  make test-simple TEST_GAMES=1000 TEST_CONCURRENCY=4"
 
-.PHONY: test-build test-simple test-full test-quick test-perft clean-test setup-test test-regression help-test
+.PHONY: test-build test-simple test-full test-quick test-perft clean-test setup-test test-regression help-test build-noeval build-eval test-eval
