@@ -38,7 +38,7 @@ private:
     SearchInfo info;
     
     // Search algorithms
-    Score alphaBeta(int depth, Score alpha, Score beta);
+    Score alphaBeta(int depth, Score alpha, Score beta, bool canNull = true);
     Score quiescence(Score alpha, Score beta);
     
     // Move ordering

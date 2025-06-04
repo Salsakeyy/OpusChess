@@ -56,10 +56,12 @@ $(TEST_EXECUTABLE): $(TEST_OBJECTS)
 
 # Clean build files
 clean:
+	rm -f src/*.o
 	rm -f $(OBJECTS) $(TEST_OBJECTS) $(EXECUTABLE) $(TEST_EXECUTABLE) $(TEST_ENGINE)
 	rm -f $(BASE_ENGINE)_prev $(TARGET)_prev
 	rm -f chess_engine_prev chess_engine_test chess_engine_noeval
 	rm -f chess_engine_eval1 chess_engine_eval2
+	rm -f chess_engine_search1 chess_engine_search2
 
 # Debug build
 debug: CXXFLAGS = -std=c++17 -Wall -Wextra -g -O0 -DDEBUG
@@ -70,9 +72,6 @@ profile: CXXFLAGS += -pg
 profile: LDFLAGS += -pg
 profile: clean all
 
-
-# Add these targets to your existing Makefile
-
 # Testing variables
 TEST_DIR = tests
 TEST_SCRIPT = $(TEST_DIR)/engine_test.py
@@ -82,9 +81,9 @@ TEST_ENGINE = $(TARGET)_test
 
 # Number of test games
 TEST_GAMES ?= 1000
-TEST_CONCURRENCY ?= 1
+TEST_CONCURRENCY ?= 4
 TEST_TIME ?= 10000
-TEST_INC ?= 100
+TEST_INC ?= 1000
 
 # Build test version
 test-build: 
@@ -109,15 +108,15 @@ build-eval1:
 build-eval2:
 	$(MAKE) clean
 	$(MAKE) EVAL_SOURCE=src/evaluation2.cpp TARGET=chess_engine_eval2
-	$(MAKE) SEARCH_SOURCE=src/search2.cpp TARGET=chess_engine_eval2
 
-# Test evaluation.cpp vs evaluation2.cpp
+# Test ONLY evaluation changes (evaluation.cpp vs evaluation2.cpp)
+# Uses same search implementation for both
 test-eval: 
-	@echo "Building engine with evaluation.cpp..."
+	@echo "Building engine with evaluation.cpp (using default search)..."
 	$(MAKE) clean
 	$(MAKE) EVAL_SOURCE=src/evaluation.cpp TARGET=chess_engine_eval1
 	@cp chess_engine_eval1 chess_engine_eval1.tmp
-	@echo "Building engine with evaluation2.cpp..."
+	@echo "Building engine with evaluation2.cpp (using default search)..."
 	$(MAKE) clean
 	$(MAKE) EVAL_SOURCE=src/evaluation2.cpp TARGET=chess_engine_eval2
 	@mv chess_engine_eval1.tmp chess_engine_eval1
@@ -128,7 +127,26 @@ test-eval:
 		--time $(TEST_TIME) \
 		--inc $(TEST_INC)
 
-# Test evaluation vs no evaluation (renamed from original test-eval)
+# Test ONLY search changes (search.cpp vs search2.cpp)
+# Uses same evaluation implementation for both
+test-search: 
+	@echo "Building engine with search.cpp (using default evaluation)..."
+	$(MAKE) clean
+	$(MAKE) SEARCH_SOURCE=src/search.cpp TARGET=chess_engine_search1
+	@cp chess_engine_search1 chess_engine_search1.tmp
+	@echo "Building engine with search2.cpp (using default evaluation)..."
+	$(MAKE) clean
+#	$(MAKE) SEARCH_SOURCE=src/search2.cpp TARGET=chess_engine_search2
+	$(MAKE) EVAL_SOURCE=src/evaluation2.cpp SEARCH_SOURCE=src/search2.cpp TARGET=chess_engine_search2
+	@mv chess_engine_search1.tmp chess_engine_search1
+	@echo "Testing search.cpp vs search2.cpp (null move pruning effectiveness)..."
+	@python3 $(SIMPLE_TEST) chess_engine_search1 chess_engine_search2 \
+		--games $(TEST_GAMES) \
+		--concurrency $(TEST_CONCURRENCY) \
+		--time $(TEST_TIME) \
+		--inc $(TEST_INC)
+
+# Test evaluation vs no evaluation
 test-eval-vs-noeval: 
 	@echo "Building no-eval engine..."
 	$(MAKE) clean
@@ -211,13 +229,14 @@ test-regression: $(TARGET)
 # Help for testing
 help-test:
 	@echo "Testing targets:"
+	@echo "  make test-eval           - Test evaluation.cpp vs evaluation2.cpp (same search)"
+	@echo "  make test-search         - Test search.cpp vs search2.cpp (same evaluation)"
+	@echo "  make test-eval-vs-noeval - Test evaluation vs material-only engine"
 	@echo "  make test-simple         - Run simple test (no external dependencies)"
 	@echo "  make test-full           - Run full SPRT test (requires cutechess-cli)"
 	@echo "  make test-quick          - Quick 20-game test for development"
 	@echo "  make test-perft          - Run move generation tests"
 	@echo "  make test-regression     - Test against previous git version"
-	@echo "  make test-eval           - Test evaluation.cpp vs evaluation2.cpp"
-	@echo "  make test-eval-vs-noeval - Test evaluation vs material-only engine"
 	@echo ""
 	@echo "Build targets:"
 	@echo "  make build-eval1         - Build engine with evaluation.cpp"
@@ -225,14 +244,16 @@ help-test:
 	@echo "  make build-noeval        - Build engine without evaluation"
 	@echo ""
 	@echo "Variables:"
-	@echo "  TEST_GAMES=N       - Number of games (default: 100)"
+	@echo "  TEST_GAMES=N       - Number of games (default: 1000)"
 	@echo "  TEST_CONCURRENCY=N - Concurrent games (default: 1)"
-	@echo "  TEST_TIME=MS       - Time per move in ms (default: 1000)"
+	@echo "  TEST_TIME=MS       - Time per move in ms (default: 10000)"
+	@echo "  TEST_INC=MS        - Time increment in ms (default: 100)"
 	@echo "  EVAL_SOURCE=file   - Evaluation source file (default: src/evaluation.cpp)"
+	@echo "  SEARCH_SOURCE=file - Search source file (default: src/search.cpp)"
 	@echo ""
-	@echo "Example:"
-	@echo "  make test-simple TEST_GAMES=1000 TEST_CONCURRENCY=4"
-	@echo "  make build-eval1"
-	@echo "  make test-eval TEST_GAMES=500"
+	@echo "Examples:"
+	@echo "  make test-eval TEST_GAMES=500          - Test evaluation with 500 games"
+	@echo "  make test-search TEST_GAMES=1000       - Test search with 1000 games"
+	@echo "  make test-search TEST_CONCURRENCY=4    - Test search with 4 concurrent games"
 
-.PHONY: test-build test-simple test-full test-quick test-perft clean-test setup-test test-regression help-test build-noeval build-eval test-eval build-eval1 build-eval2 test-eval-vs-noeval
+.PHONY: test-build test-simple test-full test-quick test-perft clean-test setup-test test-regression help-test build-noeval build-eval test-eval test-search build-eval1 build-eval2 test-eval-vs-noeval

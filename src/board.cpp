@@ -118,7 +118,7 @@ void Board::setFromFEN(const std::string& fen) {
     history.clear();
     hashHistory.clear();
     hashHistory.push_back(hash);
-    updatePawnBitboards();
+    updateBitboards();
 }
 
 std::string Board::toFEN() const {
@@ -233,6 +233,7 @@ void Board::unmakeNullMove() {
     }
 }
 
+// Updated makeMove function
 void Board::makeMove(Move m) {
     // Save undo info
     UndoInfo undo;
@@ -256,10 +257,25 @@ void Board::makeMove(Move m) {
     if (captured != NO_PIECE) {
         undo.captured = captured;
         hash ^= zobristPieces[captured][to];
+        removePieceFromBitboards(captured, to);  // Remove captured piece
     }
     
-    // Move the piece
-    squares[to] = moving;
+    // Move the piece in bitboards
+    removePieceFromBitboards(moving, from);
+    
+    // Handle promotion first (before adding to bitboards)
+    if (MoveUtils::isPromotion(m)) {
+        PieceType pt = MoveUtils::promotionType(m);
+        Piece promoted = makePiece(stm, pt);
+        squares[to] = promoted;
+        addPieceToBitboards(promoted, to);  // Add promoted piece
+        hash ^= zobristPieces[moving][to];
+        hash ^= zobristPieces[promoted][to];
+    } else {
+        squares[to] = moving;
+        addPieceToBitboards(moving, to);  // Add moving piece
+    }
+    
     squares[from] = NO_PIECE;
     
     // Handle special moves
@@ -268,21 +284,29 @@ void Board::makeMove(Move m) {
         if (to == G1) { // White kingside
             squares[F1] = WHITE_ROOK;
             squares[H1] = NO_PIECE;
+            removePieceFromBitboards(WHITE_ROOK, H1);
+            addPieceToBitboards(WHITE_ROOK, F1);
             hash ^= zobristPieces[WHITE_ROOK][H1];
             hash ^= zobristPieces[WHITE_ROOK][F1];
         } else if (to == C1) { // White queenside
             squares[D1] = WHITE_ROOK;
             squares[A1] = NO_PIECE;
+            removePieceFromBitboards(WHITE_ROOK, A1);
+            addPieceToBitboards(WHITE_ROOK, D1);
             hash ^= zobristPieces[WHITE_ROOK][A1];
             hash ^= zobristPieces[WHITE_ROOK][D1];
         } else if (to == G8) { // Black kingside
             squares[F8] = BLACK_ROOK;
             squares[H8] = NO_PIECE;
+            removePieceFromBitboards(BLACK_ROOK, H8);
+            addPieceToBitboards(BLACK_ROOK, F8);
             hash ^= zobristPieces[BLACK_ROOK][H8];
             hash ^= zobristPieces[BLACK_ROOK][F8];
         } else if (to == C8) { // Black queenside
             squares[D8] = BLACK_ROOK;
             squares[A8] = NO_PIECE;
+            removePieceFromBitboards(BLACK_ROOK, A8);
+            addPieceToBitboards(BLACK_ROOK, D8);
             hash ^= zobristPieces[BLACK_ROOK][A8];
             hash ^= zobristPieces[BLACK_ROOK][D8];
         }
@@ -290,15 +314,9 @@ void Board::makeMove(Move m) {
         // Remove captured pawn
         Square captureSquare = makeSquare(fileOf(to), rankOf(from));
         undo.captured = squares[captureSquare];
+        removePieceFromBitboards(squares[captureSquare], captureSquare);
         hash ^= zobristPieces[squares[captureSquare]][captureSquare];
         squares[captureSquare] = NO_PIECE;
-    } else if (MoveUtils::isPromotion(m)) {
-        // Replace pawn with promoted piece
-        PieceType pt = MoveUtils::promotionType(m);
-        Piece promoted = makePiece(stm, pt);
-        squares[to] = promoted;
-        hash ^= zobristPieces[moving][to];
-        hash ^= zobristPieces[promoted][to];
     }
     
     // Update castling rights
@@ -332,9 +350,9 @@ void Board::makeMove(Move m) {
     // Save state
     history.push_back(undo);
     hashHistory.push_back(hash);
-    updatePawnBitboards();
 }
 
+// Updated unmakeMove function
 void Board::unmakeMove(Move m) {
     // Restore from history
     UndoInfo undo = history.back();
@@ -359,13 +377,23 @@ void Board::unmakeMove(Move m) {
     Square to = MoveUtils::to(m);
     Piece moving = squares[to];
     
-    // Handle promotion
+    // Remove piece from 'to' square
+    removePieceFromBitboards(moving, to);
+    
+    // Handle promotion - restore original pawn
     if (MoveUtils::isPromotion(m)) {
         moving = makePiece(stm, PAWN);
     }
     
+    // Put piece back at 'from'
     squares[from] = moving;
+    addPieceToBitboards(moving, from);
+    
+    // Restore captured piece
     squares[to] = undo.captured;
+    if (undo.captured != NO_PIECE) {
+        addPieceToBitboards(undo.captured, to);
+    }
     
     // Handle special moves
     if (MoveUtils::isCastle(m)) {
@@ -373,23 +401,31 @@ void Board::unmakeMove(Move m) {
         if (to == G1) {
             squares[H1] = WHITE_ROOK;
             squares[F1] = NO_PIECE;
+            removePieceFromBitboards(WHITE_ROOK, F1);
+            addPieceToBitboards(WHITE_ROOK, H1);
         } else if (to == C1) {
             squares[A1] = WHITE_ROOK;
             squares[D1] = NO_PIECE;
+            removePieceFromBitboards(WHITE_ROOK, D1);
+            addPieceToBitboards(WHITE_ROOK, A1);
         } else if (to == G8) {
             squares[H8] = BLACK_ROOK;
             squares[F8] = NO_PIECE;
+            removePieceFromBitboards(BLACK_ROOK, F8);
+            addPieceToBitboards(BLACK_ROOK, H8);
         } else if (to == C8) {
             squares[A8] = BLACK_ROOK;
             squares[D8] = NO_PIECE;
+            removePieceFromBitboards(BLACK_ROOK, D8);
+            addPieceToBitboards(BLACK_ROOK, A8);
         }
     } else if (MoveUtils::isEnPassant(m)) {
-        // Restore captured pawn
+        // Restore captured pawn at correct square
         Square captureSquare = makeSquare(fileOf(to), rankOf(from));
         squares[captureSquare] = undo.captured;
+        addPieceToBitboards(undo.captured, captureSquare);
         squares[to] = NO_PIECE;
     }
-    updatePawnBitboards();
 }
 
 void Board::updateCastlingRights(Square from, Square to) {
@@ -424,16 +460,99 @@ Square Board::kingSquare(Color c) const {
     return -1; // Should never happen
 }
 
-void Board::updatePawnBitboards(){
-    whitePawns = 0;
-    blackPawns = 0;
-    for (int sq = 0; sq < 64; ++sq){
+void Board::updateBitboards() {
+    // Clear all bitboards
+    whitePawns = blackPawns = 0;
+    whiteKnights = blackKnights = 0;
+    whiteBishops = blackBishops = 0;
+    whiteRooks = blackRooks = 0;
+    whiteQueen = blackQueen = 0;
+    whiteKing = blackKing = 0;
+    
+    for (int sq = 0; sq < 64; ++sq) {
         Piece p = squares[sq];
-        if (p == WHITE_PAWN){
-            whitePawns |= (1ULL << sq);
+        if (p == NO_PIECE) continue;
+        
+        Color c = colorOf(p);
+        PieceType pt = typeOf(p);
+        
+        if (c == WHITE) {
+            switch (pt) {
+                case PAWN:   whitePawns   |= (1ULL << sq); break;
+                case KNIGHT: whiteKnights |= (1ULL << sq); break;
+                case BISHOP: whiteBishops |= (1ULL << sq); break;
+                case ROOK:   whiteRooks   |= (1ULL << sq); break;
+                case QUEEN:  whiteQueen   |= (1ULL << sq); break;
+                case KING:   whiteKing    |= (1ULL << sq); break;
+            }
+        } else {
+            switch (pt) {
+                case PAWN:   blackPawns   |= (1ULL << sq); break;
+                case KNIGHT: blackKnights |= (1ULL << sq); break;
+                case BISHOP: blackBishops |= (1ULL << sq); break;
+                case ROOK:   blackRooks   |= (1ULL << sq); break;
+                case QUEEN:  blackQueen   |= (1ULL << sq); break;
+                case KING:   blackKing    |= (1ULL << sq); break;
+            }
         }
-        else if (p == BLACK_PAWN){
-            blackPawns |= (1ULL << sq);
+    }
+}
+
+
+// Helper function to remove a piece from bitboards
+void Board::removePieceFromBitboards(Piece piece, Square square) {
+    if (piece == NO_PIECE) return;
+    
+    Color c = colorOf(piece);
+    PieceType pt = typeOf(piece);
+    Bitboard mask = ~(1ULL << square);  // Clear bit at square
+    
+    if (c == WHITE) {
+        switch (pt) {
+            case PAWN:   whitePawns   &= mask; break;
+            case KNIGHT: whiteKnights &= mask; break;
+            case BISHOP: whiteBishops &= mask; break;
+            case ROOK:   whiteRooks   &= mask; break;
+            case QUEEN:  whiteQueen   &= mask; break;
+            case KING:   whiteKing    &= mask; break;
+        }
+    } else {
+        switch (pt) {
+            case PAWN:   blackPawns   &= mask; break;
+            case KNIGHT: blackKnights &= mask; break;
+            case BISHOP: blackBishops &= mask; break;
+            case ROOK:   blackRooks   &= mask; break;
+            case QUEEN:  blackQueen   &= mask; break;
+            case KING:   blackKing    &= mask; break;
+        }
+    }
+}
+
+// Helper function to add a piece to bitboards
+void Board::addPieceToBitboards(Piece piece, Square square) {
+    if (piece == NO_PIECE) return;
+    
+    Color c = colorOf(piece);
+    PieceType pt = typeOf(piece);
+    Bitboard bit = 1ULL << square;  // Set bit at square
+    
+    if (c == WHITE) {
+        switch (pt) {
+            case PAWN:   whitePawns   |= bit; break;
+            case KNIGHT: whiteKnights |= bit; break;
+            case BISHOP: whiteBishops |= bit; break;
+            case ROOK:   whiteRooks   |= bit; break;
+            case QUEEN:  whiteQueen   |= bit; break;
+            case KING:   whiteKing    |= bit; break;
+        }
+    } else {
+        switch (pt) {
+            case PAWN:   blackPawns   |= bit; break;
+            case KNIGHT: blackKnights |= bit; break;
+            case BISHOP: blackBishops |= bit; break;
+            case ROOK:   blackRooks   |= bit; break;
+            case QUEEN:  blackQueen   |= bit; break;
+            case KING:   blackKing    |= bit; break;
         }
     }
 }

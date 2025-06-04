@@ -32,7 +32,7 @@ Move Search::think(int depth, int timeLimit, bool infinite) {
         info.seldepth = 0;
         info.pv.clear();
         
-        Score score = alphaBeta(d, alpha, beta);
+        Score score = alphaBeta(d, alpha, beta, true);
         
         if (!info.stop) {
             info.score = score;
@@ -69,14 +69,14 @@ Move Search::think(int depth, int timeLimit, bool infinite) {
     return bestMove;
 }
 
-Score Search::alphaBeta(int depth, Score alpha, Score beta) {
+Score Search::alphaBeta(int depth, Score alpha, Score beta, bool canNull) {
     if (info.stop) return 0;
     
     info.nodes++;
     info.seldepth = std::max(info.seldepth, info.depth - depth);
     
     // Check for time
-    if ((info.nodes & 4095) == 0 && timeUp()) {
+    if ((info.nodes & 2047) == 0 && timeUp()) {
         info.stop = true;
         return 0;
     }
@@ -99,10 +99,11 @@ Score Search::alphaBeta(int depth, Score alpha, Score beta) {
         }
     }
     // nullmove Pruning
-    if(depth >= 3 && !board.isInCheck(board.sideToMove())){
+    if(canNull && depth >= 3 && !board.isInCheck(board.sideToMove())){
         board.makeNullMove();
 
-        Score nullScore = -alphaBeta(depth - 3, -beta, -beta + 1);
+        int R = 2 + depth / 6;
+        Score nullScore = -alphaBeta(depth - R, -beta, -beta + 1, false);
 
         board.unmakeNullMove();
 
@@ -141,13 +142,13 @@ Score Search::alphaBeta(int depth, Score alpha, Score beta) {
         Score score;
         if (searchedMoves == 0) {
             // First move - full window search
-            score = -alphaBeta(depth - 1, -beta, -alpha);
+            score = -alphaBeta(depth - 1, -beta, -alpha, true);
         } else {
             // Late moves - null window search
-            score = -alphaBeta(depth - 1, -alpha - 1, -alpha);
+            score = -alphaBeta(depth - 1, -alpha - 1, -alpha, true);
             if (score > alpha && score < beta) {
                 // Re-search with full window
-                score = -alphaBeta(depth - 1, -beta, -alpha);
+                score = -alphaBeta(depth - 1, -beta, -alpha, true);
             }
         }
         

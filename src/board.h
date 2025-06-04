@@ -37,6 +37,16 @@ public:
 
     Bitboard getWhitePawns() const { return whitePawns; }
     Bitboard getBlackPawns() const { return blackPawns; }
+    Bitboard getWhiteKnights() const {return whiteKnights;}
+    Bitboard getBlackKnights() const {return blackKnights;}
+    Bitboard getWhiteBishops() const {return whiteBishops;}
+    Bitboard getBlackBishops()  const {return blackBishops;}
+    Bitboard getWhiteRooks() const {return whiteRooks;}
+    Bitboard getBlackRooks() const {return blackRooks;}
+    Bitboard getWhiteQueen() const{return whiteQueen;}
+    Bitboard getBlackQueen() const {return blackQueen;}
+
+
     
     // Utility
     void reset();
@@ -62,6 +72,8 @@ private:
     Bitboard blackRooks;
     Bitboard whiteQueen;
     Bitboard blackQueen;
+    Bitboard whiteKing;
+    Bitboard blackKing;
 
     
     // Position tracking
@@ -85,7 +97,9 @@ private:
     void movePiece(Square from, Square to);
     bool canCastle(int flag) const;
     void updateCastlingRights(Square from, Square to);
-    void updatePawnBitboards();
+    void removePieceFromBitboards(Piece piece, Square square);
+    void addPieceToBitboards(Piece piece, Square square);
+    void updateBitboards();  // Keep the original for full rebuild
 };
 
 #endif // BOARD_H

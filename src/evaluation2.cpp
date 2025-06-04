@@ -1,5 +1,6 @@
 #include "evaluation.h"
 #include "movegen.h"
+#include "board.h"
 
 // Piece-square tables (from White's perspective)
 // These values encourage good piece placement
@@ -86,7 +87,7 @@ Score Evaluator::evaluate(const Board& board) {
     // Always include material evaluation
     score += evaluateMaterial(board);
     score += evaluatePieceSquareTables(board);
-    score += evaluateMobility(board);
+    //score += evaluateMobility(board);
     score += evaluatePawnStructure(board);
 #ifndef NO_EVAL
     // Additional evaluation components
@@ -102,49 +103,91 @@ Score Evaluator::evaluate(const Board& board) {
 
 Score Evaluator::evaluateMaterial(const Board& board) {
     Score score = 0;
-    
-    for (Square sq = 0; sq < 64; ++sq) {
-        Piece p = board.pieceAt(sq);
-        if (p == NO_PIECE) continue;
-        
-        Score value = 0;
-        switch (typeOf(p)) {
-            case PAWN:   value = PAWN_VALUE; break;
-            case KNIGHT: value = KNIGHT_VALUE; break;
-            case BISHOP: value = BISHOP_VALUE; break;
-            case ROOK:   value = ROOK_VALUE; break;
-            case QUEEN:  value = QUEEN_VALUE; break;
-            case KING:   value = 0; break; // King has no material value
-        }
-        
-        if (colorOf(p) == WHITE) {
-            score += value;
-        } else {
-            score -= value;
-        }
-    }
-    
+    score += PAWN_VALUE * (__builtin_popcountll(board.getWhitePawns()) - __builtin_popcountll(board.getBlackPawns()));
+    score += BISHOP_VALUE * (__builtin_popcountll(board.getWhiteBishops()) - __builtin_popcountll(board.getBlackBishops()));
+    score += KNIGHT_VALUE * (__builtin_popcountll(board.getWhiteKnights()) - __builtin_popcountll(board.getBlackKnights()));
+    score += ROOK_VALUE * (__builtin_popcountll(board.getWhiteRooks()) - __builtin_popcountll(board.getBlackRooks()));
+    score += QUEEN_VALUE * (__builtin_popcountll(board.getWhiteQueen()) - __builtin_popcountll(board.getBlackQueen()));
     return score;
 }
 
 Score Evaluator::evaluatePieceSquareTables(const Board& board) {
-    Score score = 0;
-    bool endgame = isEndgame(board);
-    
-    for (Square sq = 0; sq < 64; ++sq) {
-        Piece p = board.pieceAt(sq);
-        while (p != PAWN) continue;
-
-        
-        Score psValue = getPieceSquareValue(p, sq, endgame);
-        if (colorOf(p) == WHITE) {
-            score += psValue;
-        } else {
-            score -= psValue;
-        }
-    }
-    
-    return score;
+   Score score = 0;
+   bool endgame = isEndgame(board);
+   
+   // White pieces
+   Bitboard pieces = board.getWhitePawns();
+   while (pieces) {
+       int square = __builtin_ctzll(pieces);
+       score += getPieceSquareValue(WHITE_PAWN, square, endgame);
+       pieces &= pieces - 1;
+   }
+   
+   pieces = board.getWhiteKnights();
+   while (pieces) {
+       int square = __builtin_ctzll(pieces);
+       score += getPieceSquareValue(WHITE_KNIGHT, square, endgame);
+       pieces &= pieces - 1;
+   }
+   
+   pieces = board.getWhiteBishops();
+   while (pieces) {
+       int square = __builtin_ctzll(pieces);
+       score += getPieceSquareValue(WHITE_BISHOP, square, endgame);
+       pieces &= pieces - 1;
+   }
+   
+   pieces = board.getWhiteRooks();
+   while (pieces) {
+       int square = __builtin_ctzll(pieces);
+       score += getPieceSquareValue(WHITE_ROOK, square, endgame);
+       pieces &= pieces - 1;
+   }
+   
+   pieces = board.getWhiteQueen();
+   while (pieces) {
+       int square = __builtin_ctzll(pieces);
+       score += getPieceSquareValue(WHITE_QUEEN, square, endgame);
+       pieces &= pieces - 1;
+   }
+   
+   // Black pieces
+   pieces = board.getBlackPawns();
+   while (pieces) {
+       int square = __builtin_ctzll(pieces);
+       score -= getPieceSquareValue(BLACK_PAWN, square, endgame);
+       pieces &= pieces - 1;
+   }
+   
+   pieces = board.getBlackKnights();
+   while (pieces) {
+       int square = __builtin_ctzll(pieces);
+       score -= getPieceSquareValue(BLACK_KNIGHT, square, endgame);
+       pieces &= pieces - 1;
+   }
+   
+   pieces = board.getBlackBishops();
+   while (pieces) {
+       int square = __builtin_ctzll(pieces);
+       score -= getPieceSquareValue(BLACK_BISHOP, square, endgame);
+       pieces &= pieces - 1;
+   }
+   
+   pieces = board.getBlackRooks();
+   while (pieces) {
+       int square = __builtin_ctzll(pieces);
+       score -= getPieceSquareValue(BLACK_ROOK, square, endgame);
+       pieces &= pieces - 1;
+   }
+   
+   pieces = board.getBlackQueen();
+   while (pieces) {
+       int square = __builtin_ctzll(pieces);
+       score -= getPieceSquareValue(BLACK_QUEEN, square, endgame);
+       pieces &= pieces - 1;
+   }
+   
+   return score;
 }
 
 Score Evaluator::evaluateMobility(const Board& board) {

@@ -69,7 +69,7 @@ Move Search::think(int depth, int timeLimit, bool infinite) {
     return bestMove;
 }
 
-Score Search::alphaBeta(int depth, Score alpha, Score beta) {
+Score Search::alphaBeta(int depth, Score alpha, Score beta, bool canNull) {
     if (info.stop) return 0;
     
     info.nodes++;
