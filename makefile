@@ -6,6 +6,7 @@ LDFLAGS = -pthread -flto
 
 # Configurable evaluation source
 EVAL_SOURCE ?= src/evaluation.cpp
+SEARCH_SOURCE ?= src/search.cpp
 
 # Source files
 SOURCES = src/main.cpp \
@@ -13,7 +14,7 @@ SOURCES = src/main.cpp \
           src/move.cpp \
           src/movegen.cpp \
           $(EVAL_SOURCE) \
-          src/search.cpp \
+          $(SEARCH_SOURCE) \
           src/uci.cpp
 
 # Object files
@@ -82,8 +83,8 @@ TEST_ENGINE = $(TARGET)_test
 # Number of test games
 TEST_GAMES ?= 1000
 TEST_CONCURRENCY ?= 1
-TEST_TIME ?= 100
-TEST_INC ?= 10
+TEST_TIME ?= 10000
+TEST_INC ?= 100
 
 # Build test version
 test-build: 
@@ -108,6 +109,7 @@ build-eval1:
 build-eval2:
 	$(MAKE) clean
 	$(MAKE) EVAL_SOURCE=src/evaluation2.cpp TARGET=chess_engine_eval2
+	$(MAKE) SEARCH_SOURCE=src/search2.cpp TARGET=chess_engine_eval2
 
 # Test evaluation.cpp vs evaluation2.cpp
 test-eval: 

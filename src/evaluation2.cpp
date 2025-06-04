@@ -87,13 +87,12 @@ Score Evaluator::evaluate(const Board& board) {
     score += evaluateMaterial(board);
     score += evaluatePieceSquareTables(board);
     score += evaluateMobility(board);
-    
+    score += evaluatePawnStructure(board);
 #ifndef NO_EVAL
     // Additional evaluation components
     
 
     // Add other evaluation components as needed
-    // score += evaluatePawnStructure(board);
     // score += evaluateKingSafety(board);
 #endif
     
@@ -171,9 +170,7 @@ Score Evaluator::evaluateMobility(const Board& board) {
             }
         }
     }
-    score = 10 * whiteMoves - 10 * blackMoves;
-    // Simple mobility score: each move is worth 1 centipawn
-    
+    score = (10 * whiteMoves) - (10 * blackMoves);
     return score;
 }
 
@@ -183,16 +180,62 @@ Score Evaluator::evaluatePawnStructure(const Board& board) {
     Score score = 0;
     // TODO: Implement pawn structure evaluation
     // - Doubled pawns
-    for(Square sq = 0; sq < 64; ++sq){
-        Piece p = board.pieceAt(sq);
-        while(p != PAWN) continue;
-        //if board
+    Score value = 0;
+    // Move these outside the loop for efficiency
+    Bitboard whitePawns = board.getWhitePawns();
+    Bitboard blackPawns = board.getBlackPawns();
 
+    for(int file = 0; file < 8; ++file) {
+        Bitboard fileMask = 0x0101010101010101ULL << file;
+    
+        int whitePawnsOnFile = __builtin_popcountll(whitePawns & fileMask);
+        int blackPawnsOnFile = __builtin_popcountll(blackPawns & fileMask);
+    
+        if(whitePawnsOnFile > 1) value -= 30 * (whitePawnsOnFile - 1);
+        if(blackPawnsOnFile > 1) value += 30 * (blackPawnsOnFile - 1);
     }
     // - Isolated pawns
+    for(int file = 0; file < 8; ++file){
+        Bitboard fileMask = 0x0101010101010101ULL << file;
+        Bitboard leftfileMask = (file > 0) ? (fileMask >> 1) : 0ULL;
+        Bitboard rightfileMask = (file < 7) ? (fileMask << 1) : 0ULL;
+    
+        // Check if there are pawns on adjacent files
+        bool whitePawnLeft = (whitePawns & leftfileMask) != 0;
+        bool whitePawnRight = (whitePawns & rightfileMask) != 0;
+        bool blackPawnLeft = (blackPawns & leftfileMask) != 0;
+        bool blackPawnRight = (blackPawns & rightfileMask) != 0;
+    
+        // If no friendly pawns on adjacent files, pawns on this file are isolated
+        if (!whitePawnLeft && !whitePawnRight) {
+            int whitePawnsOnFile = __builtin_popcountll(whitePawns & fileMask);
+            if (whitePawnsOnFile > 0) {
+                value -= 50 * whitePawnsOnFile; // Penalty for isolated white pawns
+            }
+        }
+    
+        if (!blackPawnLeft && !blackPawnRight) {
+            int blackPawnsOnFile = __builtin_popcountll(blackPawns & fileMask);
+            if (blackPawnsOnFile > 0) {
+                value += 50 * blackPawnsOnFile; // Penalty for isolated black pawns
+            }
+        }
+    }
+    
     // - Passed pawns
+    for(int file = 0; file < 8; ++file){
+        Bitboard fileMask = 0x0101010101010101ULL << file;
+        bool passedPawnWhite = (whitePawns & fileMask) != 0 && (blackPawns & fileMask) == 0;
+        bool passedPawnBlack = (blackPawns & fileMask) != 0 && (whitePawns & fileMask) == 0;
+        if(passedPawnWhite){
+            value += 80;
+        }else if(passedPawnBlack){
+            value -= 80;
+        } 
+    }
+    score += value;
     // - Pawn chains
-    return 0;
+    return score;
 }
 
 Score Evaluator::evaluateKingSafety(const Board& board) {

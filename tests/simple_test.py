@@ -2,6 +2,7 @@
 """
 Simple Chess Engine Tester - No external dependencies
 Directly interfaces with UCI engines to run tests
+Enhanced with depth and time per move tracking
 """
 
 import subprocess
@@ -22,6 +23,13 @@ class UCIEngine:
     def __init__(self, engine_path):
         self.engine_path = engine_path
         self.process = None
+        self.total_nodes = 0
+        self.total_time_ms = 0
+        self.search_count = 0
+        # Add depth tracking
+        self.total_depth = 0
+        self.max_depth = 0
+        self.depth_count = 0
         
     def start(self):
         """Start the engine process"""
@@ -47,16 +55,74 @@ class UCIEngine:
     def receive_until(self, expected):
         """Receive output until expected string"""
         lines = []
+        max_nodes = 0
+        search_time = 0
+        max_search_depth = 0
+        
         while self.process and self.process.poll() is None:
             try:
                 line = self.process.stdout.readline().strip()
                 if line:
                     lines.append(line)
+                    
+                    # Parse UCI info lines for nodes, time, and depth
+                    if line.startswith('info'):
+                        parts = line.split()
+                        for i, part in enumerate(parts):
+                            if part == 'nodes' and i + 1 < len(parts):
+                                try:
+                                    nodes = int(parts[i + 1])
+                                    max_nodes = max(max_nodes, nodes)
+                                except ValueError:
+                                    pass
+                            elif part == 'time' and i + 1 < len(parts):
+                                try:
+                                    search_time = int(parts[i + 1])
+                                except ValueError:
+                                    pass
+                            elif part == 'depth' and i + 1 < len(parts):
+                                try:
+                                    depth = int(parts[i + 1])
+                                    max_search_depth = max(max_search_depth, depth)
+                                except ValueError:
+                                    pass
+                                    
                 if expected in line:
                     break
             except:
                 break
+                
+        # Update statistics if we got a search result
+        if max_nodes > 0:
+            self.total_nodes += max_nodes
+            self.total_time_ms += search_time
+            self.search_count += 1
+            
+        # Update depth statistics
+        if max_search_depth > 0:
+            self.total_depth += max_search_depth
+            self.max_depth = max(self.max_depth, max_search_depth)
+            self.depth_count += 1
+            
         return lines
+    
+    def get_avg_nps(self):
+        """Get average nodes per second"""
+        if self.total_time_ms > 0 and self.search_count > 0:
+            return int((self.total_nodes * 1000) / self.total_time_ms)
+        return 0
+    
+    def get_avg_depth(self):
+        """Get average search depth"""
+        if self.depth_count > 0:
+            return self.total_depth / self.depth_count
+        return 0.0
+        
+    def get_avg_time_per_move(self):
+        """Get average time per move in milliseconds"""
+        if self.search_count > 0:
+            return self.total_time_ms / self.search_count
+        return 0.0
         
     def quit(self):
         """Quit the engine"""
@@ -123,7 +189,7 @@ class GameManager:
         return False, None
         
     def play_game(self, engine1_white=True):
-        """Play a single game between engines"""
+        """Play a single game between engines - returns (result, engine1_stats, engine2_stats)"""
         engine1 = UCIEngine(self.engine1_path)
         engine2 = UCIEngine(self.engine2_path)
         
@@ -193,38 +259,88 @@ class GameManager:
                 move = self.parse_move(response)
                 if not move or move == '(none)' or move == '0000':
                     # No legal moves or error
+                    stats1 = {
+                        'nps': engine1.get_avg_nps(),
+                        'depth': engine1.get_avg_depth(),
+                        'time_per_move': engine1.get_avg_time_per_move()
+                    }
+                    stats2 = {
+                        'nps': engine2.get_avg_nps(),
+                        'depth': engine2.get_avg_depth(),
+                        'time_per_move': engine2.get_avg_time_per_move()
+                    }
                     if current_engine == white_engine:
-                        return 0.0 if engine1_white else 1.0  # White loses
+                        return (0.0 if engine1_white else 1.0), stats1, stats2  # White loses
                     else:
-                        return 1.0 if engine1_white else 0.0  # Black loses
+                        return (1.0 if engine1_white else 0.0), stats1, stats2  # Black loses
                     
                 moves.append(move)
                 
                 # Check for game end
                 ended, result = self.check_game_end(moves)
                 if ended:
+                    stats1 = {
+                        'nps': engine1.get_avg_nps(),
+                        'depth': engine1.get_avg_depth(),
+                        'time_per_move': engine1.get_avg_time_per_move()
+                    }
+                    stats2 = {
+                        'nps': engine2.get_avg_nps(),
+                        'depth': engine2.get_avg_depth(),
+                        'time_per_move': engine2.get_avg_time_per_move()
+                    }
                     if result == "draw":
-                        return 0.5
+                        return 0.5, stats1, stats2
                     # Other end conditions would be handled here
                     
                 # Check for time forfeit
                 if (current_engine == white_engine and white_time < 100) or \
                    (current_engine == black_engine and black_time < 100):
                     # Time forfeit
+                    stats1 = {
+                        'nps': engine1.get_avg_nps(),
+                        'depth': engine1.get_avg_depth(),
+                        'time_per_move': engine1.get_avg_time_per_move()
+                    }
+                    stats2 = {
+                        'nps': engine2.get_avg_nps(),
+                        'depth': engine2.get_avg_depth(),
+                        'time_per_move': engine2.get_avg_time_per_move()
+                    }
                     if current_engine == white_engine:
-                        return 0.0 if engine1_white else 1.0  # White loses on time
+                        return (0.0 if engine1_white else 1.0), stats1, stats2  # White loses on time
                     else:
-                        return 1.0 if engine1_white else 0.0  # Black loses on time
+                        return (1.0 if engine1_white else 0.0), stats1, stats2  # Black loses on time
                 
                 # Switch engines
                 current_engine = black_engine if current_engine == white_engine else white_engine
                 
             # Game too long - adjudicate as draw
-            return 0.5
+            stats1 = {
+                'nps': engine1.get_avg_nps(),
+                'depth': engine1.get_avg_depth(),
+                'time_per_move': engine1.get_avg_time_per_move()
+            }
+            stats2 = {
+                'nps': engine2.get_avg_nps(),
+                'depth': engine2.get_avg_depth(),
+                'time_per_move': engine2.get_avg_time_per_move()
+            }
+            return 0.5, stats1, stats2
             
         except Exception as e:
             print(f"Error in game: {e}")
-            return 0.5  # Draw on error
+            stats1 = {
+                'nps': engine1.get_avg_nps(),
+                'depth': engine1.get_avg_depth(),
+                'time_per_move': engine1.get_avg_time_per_move()
+            }
+            stats2 = {
+                'nps': engine2.get_avg_nps(),
+                'depth': engine2.get_avg_depth(),
+                'time_per_move': engine2.get_avg_time_per_move()
+            }
+            return 0.5, stats1, stats2  # Draw on error
             
         finally:
             engine1.quit()
@@ -250,6 +366,15 @@ class SimpleTester:
         self.time_losses = 0
         self.lock = threading.Lock()
         
+        # Enhanced statistics tracking
+        self.test_engine_total_nps = 0
+        self.base_engine_total_nps = 0
+        self.test_engine_total_depth = 0.0
+        self.base_engine_total_depth = 0.0
+        self.test_engine_total_time = 0.0
+        self.base_engine_total_time = 0.0
+        self.stats_samples = 0
+        
         # Progress
         self.games_completed = 0
         self.start_time = None
@@ -261,8 +386,8 @@ class SimpleTester:
         for i in game_indices:
             try:
                 # Play pair of games with reversed colors
-                result1 = manager.play_game(engine1_white=True)
-                result2 = manager.play_game(engine1_white=False)
+                result1, test_stats1, base_stats1 = manager.play_game(engine1_white=True)
+                result2, test_stats2, base_stats2 = manager.play_game(engine1_white=False)
                 
                 with self.lock:
                     # Update results
@@ -273,6 +398,18 @@ class SimpleTester:
                             self.losses += 1
                         else:
                             self.draws += 1
+                    
+                    # Update statistics
+                    for test_stats, base_stats in [(test_stats1, base_stats1), (test_stats2, base_stats2)]:
+                        if test_stats['nps'] > 0:
+                            self.test_engine_total_nps += test_stats['nps']
+                            self.test_engine_total_depth += test_stats['depth']
+                            self.test_engine_total_time += test_stats['time_per_move']
+                            self.stats_samples += 1
+                        if base_stats['nps'] > 0:
+                            self.base_engine_total_nps += base_stats['nps']
+                            self.base_engine_total_depth += base_stats['depth']
+                            self.base_engine_total_time += base_stats['time_per_move']
                             
                     self.games_completed += 2
                     
@@ -306,11 +443,26 @@ class SimpleTester:
         elapsed = time.time() - self.start_time
         games_per_sec = total / elapsed if elapsed > 0 else 0
         
+        # Calculate averages
+        if self.stats_samples > 0:
+            test_avg_nps = self.test_engine_total_nps // self.stats_samples
+            base_avg_nps = self.base_engine_total_nps // self.stats_samples
+            test_avg_depth = self.test_engine_total_depth / self.stats_samples
+            base_avg_depth = self.base_engine_total_depth / self.stats_samples
+            test_avg_time = self.test_engine_total_time / self.stats_samples
+            base_avg_time = self.base_engine_total_time / self.stats_samples
+        else:
+            test_avg_nps = base_avg_nps = 0
+            test_avg_depth = base_avg_depth = 0.0
+            test_avg_time = base_avg_time = 0.0
+        
         print(f"\rGames: {total}/{self.num_games} | "
               f"W: {self.wins} ({win_rate:.1%}) "
               f"D: {self.draws} ({draw_rate:.1%}) "
               f"L: {self.losses} ({loss_rate:.1%}) | "
               f"ELO: {elo:+.1f} | "
+              f"Test NPS: {test_avg_nps:,} Depth: {test_avg_depth:.1f} Time: {test_avg_time:.0f}ms | "
+              f"Base NPS: {base_avg_nps:,} Depth: {base_avg_depth:.1f} Time: {base_avg_time:.0f}ms | "
               f"Speed: {games_per_sec:.1f} g/s", end='')
         sys.stdout.flush()
         
@@ -318,7 +470,7 @@ class SimpleTester:
         """Run the test"""
         print(f"Testing: {os.path.basename(self.test_engine)} vs {os.path.basename(self.base_engine)}")
         print(f"Games: {self.num_games} | Time: {self.time_ms}ms + {self.inc_ms}ms/move")
-        print("-" * 80)
+        print("-" * 120)
         
         # Validate engines
         if not os.path.exists(self.base_engine):
@@ -364,7 +516,7 @@ class SimpleTester:
         
     def print_final_results(self):
         """Print final results"""
-        print("\n" + "=" * 80)
+        print("\n" + "=" * 120)
         
         total = self.wins + self.draws + self.losses
         if total == 0:
@@ -399,10 +551,27 @@ class SimpleTester:
             
         elapsed = time.time() - self.start_time
         
+        # Calculate final averages
+        if self.stats_samples > 0:
+            test_avg_nps = self.test_engine_total_nps // self.stats_samples
+            base_avg_nps = self.base_engine_total_nps // self.stats_samples
+            test_avg_depth = self.test_engine_total_depth / self.stats_samples
+            base_avg_depth = self.base_engine_total_depth / self.stats_samples
+            test_avg_time = self.test_engine_total_time / self.stats_samples
+            base_avg_time = self.base_engine_total_time / self.stats_samples
+        else:
+            test_avg_nps = base_avg_nps = 0
+            test_avg_depth = base_avg_depth = 0.0
+            test_avg_time = base_avg_time = 0.0
+        
         print(f"Results: +{self.wins} ={self.draws} -{self.losses}")
         print(f"Win rate: {win_rate:.1%} | Draw rate: {draw_rate:.1%} | Loss rate: {loss_rate:.1%}")
         print(f"ELO difference: {elo:+.2f} [{ci_lower:+.2f}, {ci_upper:+.2f}] (95% CI)")
         print(f"LOS: {los:.1%}")
+        print()
+        print("Engine Statistics:")
+        print(f"Test Engine  - NPS: {test_avg_nps:,} | Avg Depth: {test_avg_depth:.1f} | Avg Time/Move: {test_avg_time:.0f}ms")
+        print(f"Base Engine  - NPS: {base_avg_nps:,} | Avg Depth: {base_avg_depth:.1f} | Avg Time/Move: {base_avg_time:.0f}ms")
         print(f"Time: {elapsed:.1f}s ({total/elapsed:.1f} games/s)")
         
         # Save results
@@ -416,6 +585,16 @@ class SimpleTester:
             'elo': elo,
             'elo_ci': [ci_lower, ci_upper],
             'los': los,
+            'test_engine_stats': {
+                'avg_nps': test_avg_nps,
+                'avg_depth': test_avg_depth,
+                'avg_time_per_move': test_avg_time
+            },
+            'base_engine_stats': {
+                'avg_nps': base_avg_nps,
+                'avg_depth': base_avg_depth,
+                'avg_time_per_move': base_avg_time
+            },
             'time_seconds': elapsed,
             'time_control': f"{self.time_ms}+{self.inc_ms}",
             'timestamp': datetime.now().isoformat()
@@ -444,7 +623,7 @@ def main():
     kwargs = {
         'num_games': 100,
         'concurrency': 1,
-        'time_ms': 10000,
+        'time_ms': 100000,
         'inc_ms': 100
     }
     

@@ -13,6 +13,7 @@ using Piece = int;
 using PieceType = int;
 using Move = uint16_t;
 using Score = int;
+using Bitboard = uint64_t;
 
 // Constants
 constexpr int NUM_SQUARES = 64;

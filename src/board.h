@@ -26,11 +26,17 @@ public:
     void makeMove(Move m);
     void unmakeMove(Move m);
     bool isLegalMove(Move m) const;
+    void makeNullMove();
+    void unmakeNullMove();
+
     
     // Position queries
     bool isInCheck(Color c) const;
     bool isAttacked(Square s, Color by) const;
     Square kingSquare(Color c) const;
+
+    Bitboard getWhitePawns() const { return whitePawns; }
+    Bitboard getBlackPawns() const { return blackPawns; }
     
     // Utility
     void reset();
@@ -46,6 +52,17 @@ private:
     Square epSquare;
     int halfmoves;
     int fullmoves;
+    Bitboard whitePawns;
+    Bitboard blackPawns;
+    Bitboard whiteKnights;
+    Bitboard blackKnights;
+    Bitboard whiteBishops;
+    Bitboard blackBishops;
+    Bitboard whiteRooks;
+    Bitboard blackRooks;
+    Bitboard whiteQueen;
+    Bitboard blackQueen;
+
     
     // Position tracking
     uint64_t hash;
@@ -68,6 +85,7 @@ private:
     void movePiece(Square from, Square to);
     bool canCastle(int flag) const;
     void updateCastlingRights(Square from, Square to);
+    void updatePawnBitboards();
 };
 
 #endif // BOARD_H

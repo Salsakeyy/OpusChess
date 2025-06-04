@@ -118,6 +118,7 @@ void Board::setFromFEN(const std::string& fen) {
     history.clear();
     hashHistory.clear();
     hashHistory.push_back(hash);
+    updatePawnBitboards();
 }
 
 std::string Board::toFEN() const {
@@ -176,6 +177,60 @@ std::string Board::toFEN() const {
     ss << ' ' << halfmoves << ' ' << fullmoves;
     
     return ss.str();
+}
+
+void Board::makeNullMove() {
+    // Save undo info for null move
+    UndoInfo undo;
+    undo.move = 0; // No actual move
+    undo.captured = NO_PIECE;
+    undo.castling = castling;
+    undo.epSquare = epSquare;
+    undo.halfmoves = halfmoves;
+    undo.hash = hash;
+    
+    // Clear en passant (can't capture en passant after null move)
+    if (epSquare != -1) {
+        hash ^= zobristEpFile[fileOf(epSquare)];
+        epSquare = -1;
+    }
+    
+    // Increment halfmove counter
+    halfmoves++;
+    
+    // Switch side to move
+    stm = 1 - stm;
+    hash ^= zobristSideToMove;
+    
+    // If it was black's turn, increment fullmove counter
+    if (stm == WHITE) {
+        fullmoves++;
+    }
+    
+    // Save state
+    history.push_back(undo);
+    hashHistory.push_back(hash);
+}
+
+void Board::unmakeNullMove() {
+    // Restore from history
+    UndoInfo undo = history.back();
+    history.pop_back();
+    hashHistory.pop_back();
+    
+    // Switch side back
+    stm = 1 - stm;
+    
+    // Restore fields
+    castling = undo.castling;
+    epSquare = undo.epSquare;
+    halfmoves = undo.halfmoves;
+    hash = undo.hash;
+    
+    // Adjust fullmove counter
+    if (stm == BLACK) {
+        fullmoves--;
+    }
 }
 
 void Board::makeMove(Move m) {
@@ -277,6 +332,7 @@ void Board::makeMove(Move m) {
     // Save state
     history.push_back(undo);
     hashHistory.push_back(hash);
+    updatePawnBitboards();
 }
 
 void Board::unmakeMove(Move m) {
@@ -333,6 +389,7 @@ void Board::unmakeMove(Move m) {
         squares[captureSquare] = undo.captured;
         squares[to] = NO_PIECE;
     }
+    updatePawnBitboards();
 }
 
 void Board::updateCastlingRights(Square from, Square to) {
@@ -365,6 +422,20 @@ Square Board::kingSquare(Color c) const {
         }
     }
     return -1; // Should never happen
+}
+
+void Board::updatePawnBitboards(){
+    whitePawns = 0;
+    blackPawns = 0;
+    for (int sq = 0; sq < 64; ++sq){
+        Piece p = squares[sq];
+        if (p == WHITE_PAWN){
+            whitePawns |= (1ULL << sq);
+        }
+        else if (p == BLACK_PAWN){
+            blackPawns |= (1ULL << sq);
+        }
+    }
 }
 
 bool Board::isAttacked(Square s, Color by) const {
